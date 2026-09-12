@@ -1,1 +1,121 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Universal Cataloging Assistant</title><link rel="stylesheet" href="/static/style.css"><script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script></head><body><header class="topbar"><div><span class="eyebrow">LIBRARY & INFORMATION SCIENCE</span><h1>Universal Cataloging Assistant</h1><p>Search a book, read a cover, and receive DDC, LCSH, subject and call-number suggestions.</p></div><span class="badge">Prototype v5 — Cataloging Intelligence</span></header><main class="container"><section class="hero-card"><div class="tabs"><button class="tab active" data-mode="search">Search</button><button class="tab" data-mode="photo">Book photo</button></div><div id="searchMode"><label for="query">Book title or author</label><div class="search-row"><input id="query" type="text" placeholder="e.g. Ngugi wa Thiong'o"><button id="searchBtn" class="primary">Search</button></div><div id="searchStatus" class="status"></div></div><div id="photoMode" class="hidden"><label for="bookPhoto">Upload book cover / title page</label><input id="bookPhoto" type="file" accept="image/*"><div id="preview" class="preview">Image preview will appear here.</div><button id="photoAnalyzeBtn" class="primary">Read & Search Book</button><div id="ocrStatus" class="status"></div></div><p class="hint">Real bibliographic search via Open Library. Classification is a suggestion and must be verified.</p></section><section id="matches" class="matches hidden"><div class="section-title"><div><span class="eyebrow">SEARCH RESULTS</span><h2>Select a matching book</h2></div><span id="matchCount"></span></div><div id="matchList"></div></section><section id="result" class="result-card hidden"><div class="result-head"><div><span class="eyebrow">CATALOGING SUGGESTION</span><h2 id="resultTitle">—</h2><p id="resultAuthor" class="author"></p></div><span id="confidence" class="confidence">Review required</span></div><div class="grid"><article class="result-item"><span>Material type</span><strong id="materialType">—</strong></article><article class="result-item"><span>Primary subject</span><strong id="subject">—</strong></article><article class="result-item"><span>Suggested DDC</span><strong id="ddc">—</strong><small class="field-note">Existing DDC when available; otherwise inferred.</small></article><article class="result-item"><span>LCSH suggestions</span><strong id="lcsh">—</strong><small class="field-note">Authority candidates; librarian verification required.</small></article><article class="result-item wide"><span>Suggested shelf location</span><strong id="shelf">—</strong></article><article class="result-item wide"><span>Suggested call number</span><strong id="callNumber">—</strong><small class="field-note">Basic author mark; not a full Cutter number.</small></article><article class="result-item wide"><span>Record source</span><strong id="source">—</strong></article></div><div class="review"><div><h3>Librarian review</h3><p>Verify the suggestion before adding it to a real catalog.</p></div><div class="review-actions"><button id="editBtn" class="secondary">Edit</button><button id="approveBtn" class="primary">Approve</button></div></div></section></main><script src="/static/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <link rel="icon" type="image/x-icon" href="/static/FAVICON.ICO">
+        <title>Universal Cataloging Assistant</title>
+        <link rel="stylesheet" href="/static/style.css">
+        <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js">
+        </script>
+    </head>
+    <body>
+        <header class="topbar">
+            <div>
+                <span class="eyebrow">LIBRARY & INFORMATION SCIENCE</span>
+                <h1>Universal Cataloging Assistant</h1>
+                <p>Search a book, read a cover, and receive DDC, LCSH, subject and call-number suggestions.</p>
+            </div>
+            <span class="badge">Version v5 — AI-Cataloging Assistant</span>
+        </header>
+        <main class="container">
+            <section class="hero-card">
+                <div class="tabs">
+                    <button class="tab active" data-mode="search">Search</button>
+                    <button class="tab" data-mode="photo">Book photo</button>
+                </div>
+                <div id="searchMode">
+                    <label for="query">Book title or author</label>
+                    <div class="search-row">
+                        <input id="query" type="text" placeholder="e.g. Ngugi wa Thiong'o">
+                        <button id="searchBtn" class="primary">Search</button>
+                    </div>
+                    <div id="searchStatus" class="status">
+                    </div>
+                </div>
+                <div id="photoMode" class="hidden">
+                    <label for="bookPhoto">Upload book cover / title page</label>
+                    <input id="bookPhoto" type="file" accept="image/*">
+                    <div id="preview" class="preview">Image preview will appear here.</div>
+                    <button id="photoAnalyzeBtn" class="primary">Read & Search Book</button>
+                    <div id="ocrStatus" class="status">
+                    </div>
+                </div>
+                <p class="hint">Real bibliographic search via Open Library. Classification is a suggestion and must be verified.</p>
+            </section>
+            <section id="matches" class="matches hidden">
+                <div class="section-title">
+                    <div>
+                        <span class="eyebrow">SEARCH RESULTS</span>
+                        <h2>Select a matching book</h2>
+                    </div>
+                    <span id="matchCount">
+                    </span>
+                </div>
+                <div id="matchList">
+                </div>
+            </section>
+            <section id="result" class="result-card hidden">
+                <div class="result-head">
+                    <div>
+                        <span class="eyebrow">CATALOGING SUGGESTION</span>
+                        <h2 id="resultTitle">—</h2>
+                        <p id="resultAuthor" class="author">
+                        </p>
+                    </div>
+                    <span id="confidence" class="confidence">Review required</span>
+                </div>
+                <div class="grid">
+                    <article class="result-item">
+                        <span>Material type</span>
+                        <strong id="materialType">—</strong>
+                    </article>
+                    <article class="result-item">
+                        <span>Primary subject</span>
+                        <strong id="subject">—</strong>
+                    </article>
+                    <article class="result-item">
+                        <span>Suggested DDC</span>
+                        <strong id="ddc">—</strong>
+                        <small class="field-note">Existing DDC when available; otherwise inferred.</small>
+                    </article>
+                    <article class="result-item">
+                        <span>LCSH suggestions</span>
+                        <strong id="lcsh">—</strong>
+                        <small class="field-note">Authority candidates; librarian verification required.</small>
+                    </article>
+                    <article class="result-item wide">
+                        <span>Suggested shelf location</span>
+                        <strong id="shelf">—</strong>
+                    </article>
+                    <article class="result-item wide">
+                        <span>Suggested call number</span>
+                        <strong id="callNumber">—</strong>
+                        <small class="field-note">Basic author mark; not a full Cutter number.</small>
+                    </article>
+                    <article class="result-item wide">
+                        <span>Record source</span>
+                        <strong id="source">—</strong>
+                    </article>
+                </div>
+                <div class="review">
+                    <div>
+                        <h3>Librarian review</h3>
+                        <p>Verify the suggestion before adding it to a real catalog.</p>
+                    </div>
+                    <div class="review-actions">
+                        <button id="editBtn" class="secondary">Edit</button>
+                        <button id="approveBtn" class="primary">Approve</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+        <footer class="site-footer">
+            <a href="https://peterbarakaphilip.netlify.app" target="_blank">
+                Developed by Pinchezmedia254
+            </a>
+        </footer>
+        <script src="/static/app.js">
+        </script>
+    </body>
+</html>
