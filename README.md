@@ -1,6 +1,6 @@
 # Universal Cataloging Assistant — V5
 
-V5 keeps the working V4 bibliographic search/OCR and adds a cataloging-intelligence layer.
+what was working in V4 bibliographic search/OCR and adds a cataloging-intelligence layer.
 
 ## Added
 - Explicit Open Library metadata fields including subjects and DDC.
