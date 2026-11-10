@@ -65,20 +65,13 @@ const MISSING = (what) => `[${what} not supplied — review]`;
 
 
 /* =========================
-   SOURCE STATUS PANEL
+   SOURCE STATUS (compact)
 ========================= */
-
-const STATUS_LABEL = {
-    ok: "Records returned",
-    no_results: "Responded — no matching records",
-    failed: "FAILED — results incomplete",
-    skipped: "Not used for this search"
-};
 
 const ERROR_LABEL = {
     timeout: "Timed out",
     network: "Network error",
-    quota: "Quota / rate limit reached",
+    quota: "Quota reached",
     auth: "Access refused",
     http_error: "HTTP error",
     invalid_response: "Unreadable response"
@@ -87,48 +80,61 @@ const ERROR_LABEL = {
 function renderStatus(data) {
     const panel = $("apiStatus");
     const sources = Array.isArray(data.sources) ? data.sources : [];
-    if (!sources.length && !data.message) {
+    const used = sources.filter((s) => s.status !== "skipped");
+    if (!used.length && !data.message) {
         panel.innerHTML = "";
         return;
     }
 
-    const cards = sources.map((s) => {
+    const failed = used.filter((s) => s.status === "failed");
+    const chips = used.map((s) => {
         const cls = s.status === "failed" ? "error" : s.status;
-        const kind = s.error_kind ? (ERROR_LABEL[s.error_kind] || s.error_kind) : "";
-        const detail = s.status === "failed"
-            ? `<small>${esc(kind)}${s.error ? " — " + esc(s.error) : ""}</small>`
-            : (s.status === "skipped" && s.error ? `<small>${esc(s.error)}</small>` : "");
-        return `
-            <div class="api-status-card ${esc(cls)}">
-                <strong>${esc(s.name)}</strong>
-                <span>${esc(STATUS_LABEL[s.status] || s.status)}${s.status === "ok" ? ` (${esc(s.count)})` : ""}</span>
-                ${detail}
-            </div>`;
+        const why = s.status === "failed"
+            ? `${ERROR_LABEL[s.error_kind] || "Failed"}${s.error ? ": " + s.error : ""}`
+            : (s.status === "ok" ? `${s.count} record(s)` : "No matching records");
+        return `<span class="src-chip ${esc(cls)}" title="${esc(why)}"><i></i>${esc(s.name)}${s.status === "failed" ? " — " + esc(ERROR_LABEL[s.error_kind] || "failed") : ""}</span>`;
     }).join("");
 
-    const failed = sources.filter((s) => s.status === "failed").length;
-    const noticeClass = data.all_sources_failed ? "fallback-notice danger" : "fallback-notice";
-    const notice = data.message ? `<div class="${noticeClass}">${esc(data.message)}</div>` : "";
+    const notice = data.message && (failed.length || data.fallback)
+        ? `<div class="fallback-notice${data.all_sources_failed ? " danger" : ""}">${esc(data.message)}</div>` : "";
 
-    panel.innerHTML = `
-        <div class="api-status-head">
-            <div>
-                <span class="eyebrow">SOURCE STATUS</span>
-                <h3>Bibliographic sources</h3>
-            </div>
-            <span class="api-total">${sources.length - failed} of ${sources.length} responded</span>
-        </div>
-        <div class="api-status-grid">${cards}</div>
-        ${notice}`;
+    panel.innerHTML = `<div class="src-row"><span class="src-label">Sources</span>${chips}</div>${notice}`;
 }
 
 
 /* =========================
-   DISPLAY SEARCH RESULTS
+   SEARCH RESULTS (compact list)
 ========================= */
 
-function badge(text, kind) {
-    return `<span class="badge-mini ${kind || ""}">${esc(text)}</span>`;
+const PAGE_SIZE = 8;
+
+function resultRow(book) {
+    const item = document.createElement("div");
+    item.className = "match" + (book.synthetic ? " synthetic" : "");
+
+    const authors = Array.isArray(book.author_name) && book.author_name.length
+        ? invertName(book.author_name[0]) + (book.author_name.length > 1 ? " et al." : "")
+        : "Author unknown";
+    const meta = [authors, book.first_publish_year, (book.publisher || [])[0]].filter(Boolean).join(" · ");
+    const sourceCount = (book.sources || []).length;
+    const sourceText = book.synthetic
+        ? "Not a bibliographic record"
+        : (book.sources?.[0] || book.source || "") + (sourceCount > 1 ? ` +${sourceCount - 1}` : "");
+    const ddc = (book.source_ddcs || [])[0]?.number;
+
+    item.innerHTML = `
+        <div class="match-main">
+            <h3>${esc(book.title || "Untitled")}</h3>
+            <p class="match-meta">${esc(meta)}</p>
+            <p class="match-src">${esc(sourceText)}${ddc ? `<span class="ddc-tag">DDC ${esc(ddc)}</span>` : ""}</p>
+        </div>
+        <button class="primary analyze-btn">Select</button>`;
+    item.querySelector(".analyze-btn").addEventListener("click", () => {
+        document.querySelectorAll(".match.selected").forEach((el) => el.classList.remove("selected"));
+        item.classList.add("selected");
+        showCatalog(book);
+    });
+    return item;
 }
 
 function renderMatches(data) {
@@ -136,113 +142,80 @@ function renderMatches(data) {
     const books = Array.isArray(data.docs) ? data.docs : [];
 
     list.innerHTML = "";
-    $("matchCount").textContent = data.fallback ? "no records" : `${books.length} found`;
+    $("matchCount").textContent = data.fallback ? "" : `${books.length} found`;
 
     if (books.length === 0) {
-        list.innerHTML = `
-            <div class="match"><div>
-                <h3>No matching records</h3>
-                <p>Try the full book title, author name, or a different spelling.</p>
-            </div></div>`;
+        list.innerHTML = `<div class="empty">No matching records. Try the full title, the author, or an ISBN.</div>`;
         $("matches").classList.remove("hidden");
         return;
     }
 
-    books.forEach((book) => {
-        const item = document.createElement("div");
-        item.className = "match";
-
-        const authors = Array.isArray(book.author_name) && book.author_name.length
-            ? book.author_name.join(", ") : "Author unknown";
-        const year = book.first_publish_year || "Year unknown";
-        const sources = book.sources?.length ? book.sources.join(" + ") : (book.source || "Catalog");
-
-        const badges = [];
-        if (book.synthetic) badges.push(badge("Not a bibliographic record", "warn"));
-        if (book.source_ddcs?.length) badges.push(badge("Source DDC " + [...new Set(book.source_ddcs.map((d) => d.number))].join(", "), "good"));
-        if (book.source_call_numbers?.length) badges.push(badge("Source call number", "good"));
-        if (book.metadata_type === "scholarly_bibliographic_record") badges.push(badge("Scholarly record", "muted"));
-        if ((book.sources || []).length > 1) badges.push(badge(`Merged from ${book.sources.length} sources`, "muted"));
-
-        item.innerHTML = `
-            <div>
-                <h3>${esc(book.title || "Untitled")}</h3>
-                <p>${esc(authors)} • ${esc(year)} • ${esc(sources)}</p>
-                <p class="badges">${badges.join(" ")}</p>
-            </div>
-            <button class="secondary analyze-btn">Analyze</button>`;
-
-        item.querySelector(".analyze-btn").addEventListener("click", () => showCatalog(book));
-        list.appendChild(item);
-    });
+    let shown = 0;
+    const more = document.createElement("button");
+    more.className = "secondary more-btn";
+    const showNext = () => {
+        books.slice(shown, shown + PAGE_SIZE).forEach((b) => list.insertBefore(resultRow(b), more));
+        shown = Math.min(books.length, shown + PAGE_SIZE);
+        more.textContent = `Show ${books.length - shown} more`;
+        more.classList.toggle("hidden", shown >= books.length);
+    };
+    more.addEventListener("click", showNext);
+    list.appendChild(more);
+    showNext();
 
     $("matches").classList.remove("hidden");
 }
 
 
 /* =========================
-   CATALOG CARDS (AACR2-style draft)
+   CATALOG CARDS (AACR2-style draft; one of each element)
 ========================= */
 
-function buildCards(book, cls) {
+function buildCards(book, cls, heading) {
     const authors = Array.isArray(book.author_name) ? book.author_name : [];
     const publisher = (book.publisher || [])[0];
-    const year = book.first_publish_year;
     const pages = book.number_of_pages;
     const isbn = firstIsbn(book);
-    const heading = authors.length ? invertName(authors[0]) : MISSING("Main entry");
+    const main = authors.length ? invertName(authors[0]) : MISSING("Main entry");
     const responsibility = authors.length ? authors.join(", ") : MISSING("Statement of responsibility");
-    const pub = [
-        MISSING("Place of publication"),
-        " : ",
-        publisher || MISSING("Publisher"),
-        ", ",
-        year || MISSING("Date")
-    ].join("");
-
-    const lines = [
-        `<p class="catalog-entry"><strong class="editable">${esc(heading)}</strong></p>`,
-        `<p class="catalog-entry"><span class="editable">${esc(book.title || "Untitled")} / ${esc(responsibility)}.</span></p>`,
-        `<p class="catalog-entry"><span class="editable">${esc(pub)}.</span></p>`,
-        `<p class="catalog-entry"><span class="editable">${pages ? esc(pages) + " p." : esc(MISSING("Extent"))}</span></p>`,
-        `<p class="catalog-entry"><span class="editable">${isbn ? "ISBN " + esc(isbn) : esc(MISSING("ISBN"))}</span></p>`
-    ];
-
-    const subjects = cls.lcsh_terms?.length ? cls.lcsh_terms : [];
-    const cn = cls.call_number?.value
-        ? `${esc(cls.call_number.value)} <small>(source record: ${esc(cls.call_number.source || "unknown")})</small>`
-        : (cls.suggested_call_number
-            ? `<span class="editable">${esc(cls.suggested_call_number.value)}</span> <small>(generated suggestion, not a source call number)</small>`
-            : "—");
+    const pub = `${MISSING("Place")} : ${publisher || MISSING("Publisher")}, ${book.first_publish_year || MISSING("Date")}`;
+    const call = callNumberInfo(cls);
 
     return `
         <div class="catalog-section-head">
             <div>
                 <span class="eyebrow">DRAFT CATALOGUE RECORD</span>
-                <h3>AACR2-style description from available metadata</h3>
+                <h3>AACR2-style description</h3>
             </div>
-            <span class="catalog-standard">Elements marked [ … ] were not supplied by any source</span>
+            <span class="catalog-standard">[ … ] = not supplied by any source</span>
         </div>
         <div class="catalog-card-grid">
             <article class="catalog-card main-entry-card">
-                <div class="card-label">MAIN ENTRY</div>
-                <div class="card-body">${lines.join("")}</div>
-            </article>
-            <article class="catalog-card">
-                <div class="card-label">SUBJECT ENTRIES</div>
-                <div class="card-body catalog-subjects">
-                    ${subjects.length ? subjects.map((s, i) => `<p><span class="editable">${i + 1}. ${esc(s)}</span></p>`).join("") : "<p>No subject candidates</p>"}
-                    <p><small>Candidates only — authority verification required.</small></p>
-                </div>
-            </article>
-            <article class="catalog-card">
-                <div class="card-label">CLASSIFICATION &amp; CALL NUMBER</div>
                 <div class="card-body">
-                    <p>DDC: <span class="editable">${esc(cls.classification.number || "—")}</span> <small>(${esc(cls.classification.provenance === "source_record" ? "source-supplied" : cls.classification.provenance === "inferred" ? "inferred" : "none")})</small></p>
-                    <p class="catalog-call">${cn}</p>
+                    <p class="catalog-entry"><strong class="editable">${esc(main)}</strong></p>
+                    <p class="catalog-entry"><span class="editable">${esc(book.title || "Untitled")} / ${esc(responsibility)}.</span></p>
+                    <p class="catalog-entry"><span class="editable">${esc(pub)}.</span></p>
+                    <p class="catalog-entry"><span class="editable">${pages ? esc(pages) + " p." : esc(MISSING("Extent"))}</span>
+                        <span class="editable">${isbn ? " ISBN " + esc(isbn) : ""}</span></p>
+                    <p class="catalog-entry catalog-tracing">
+                        <span class="editable">1. ${esc(heading || MISSING("Subject heading"))}</span>
+                        &nbsp;&nbsp;<span class="editable">I. ${esc(authors[0] ? invertName(authors[0]) : "Title")}</span>
+                    </p>
+                    <p class="catalog-call"><span class="editable">${esc(call.value || "—")}</span>
+                        <small>${esc(call.label)}</small></p>
                 </div>
             </article>
         </div>`;
+}
+
+function callNumberInfo(cls) {
+    if (cls.call_number?.value) {
+        return { value: cls.call_number.value, label: `source record · ${cls.call_number.source || "unknown"}` };
+    }
+    if (cls.suggested_call_number) {
+        return { value: cls.suggested_call_number.value, label: "generated suggestion (not a source call number)" };
+    }
+    return { value: null, label: "" };
 }
 
 
@@ -265,7 +238,6 @@ function basisText(cls) {
     const out = [];
     const c = cls.classification;
     if (c.evidence?.length) out.push("Evidence: " + c.evidence.join(", "));
-    if (cls.source_subject_terms?.length) out.push("Source subject terms: " + cls.source_subject_terms.slice(0, 6).join("; "));
     if (cls.conflict) {
         out.push(`⚠ ${cls.conflict.message} Subject evidence suggests ${cls.conflict.inferred_number} (${cls.conflict.inferred_subject}).`);
     }
@@ -282,12 +254,8 @@ async function showCatalog(book) {
     $("result").classList.remove("hidden");
     $("resultTitle").textContent = book.title || "Untitled";
     $("resultAuthor").textContent = (book.author_name || []).join(", ") || "Author not supplied";
-    $("subject").textContent = "Analyzing…";
-    $("ddc").textContent = "…";
-    $("lcsh").textContent = "Searching authoritative headings…";
-    $("shelf").textContent = "…";
-    $("callNumber").textContent = "…";
-    $("basis").textContent = "…";
+    ["materialType", "subject", "ddc", "shelf", "callNumber", "basis", "lcsh", "source"].forEach((id) => { $(id).textContent = "…"; });
+    $("confidence").textContent = "Analyzing…";
     $("catalogCards").innerHTML = "";
     $("result").scrollIntoView({ behavior: "smooth" });
 
@@ -307,57 +275,57 @@ async function showCatalog(book) {
         return;
     }
 
-    current = { book, cls, authority: [], edited: false };
+    current = { book, cls, heading: null, headingBasis: null, edited: false };
 
+    // Exactly one value for each of: DDC, LCSH heading, call number.
+    const call = callNumberInfo(cls);
     $("materialType").textContent = cls.material_type || "—";
     $("subject").textContent = cls.primary_subject || "General / needs review";
     $("ddc").textContent = cls.classification.number || "—";
     $("shelf").textContent = cls.shelf;
+    $("callNumber").innerHTML = call.value ? `${esc(call.value)}<small class="sub">${esc(call.label)}</small>` : "—";
     $("confidence").textContent = provenanceText(cls, book);
     $("basis").textContent = basisText(cls);
+    $("source").textContent = book.sources?.length ? book.sources.join(" + ") : (book.source || "Bibliographic record");
 
-    if (cls.call_number?.value) {
-        $("callNumber").textContent = `${cls.call_number.value} (source record: ${cls.call_number.source || "unknown"})`;
-    } else if (cls.suggested_call_number) {
-        $("callNumber").textContent = `Suggested (generated): ${cls.suggested_call_number.value}`;
-    } else {
-        $("callNumber").textContent = "—";
-    }
-    $("source").textContent = (book.sources?.length ? book.sources.join(" + ") : book.source || "Bibliographic record")
-        + (cls.call_number?.value ? " • source call number available" : "");
-
-    $("catalogCards").innerHTML = buildCards(book, cls);
-
-    await loadAuthority(cls);
+    const first = (cls.lcsh_terms || [])[0] || null;
+    $("catalogCards").innerHTML = buildCards(book, cls, first);
+    await loadAuthority(cls, book);
 }
 
-async function loadAuthority(cls) {
-    const terms = (cls.lcsh_terms || []).slice(0, 3);
-    const recordTerms = cls.lcsh_terms || [];
-    const lines = [];
+/* Pick ONE heading: an exact LC authority match if there is one, otherwise the
+   top LC suggestion for the first subject term, otherwise the record's own term. */
+function pickHeading(terms, results) {
+    for (let i = 0; i < terms.length; i++) {
+        const exact = (results[i]?.headings || []).find((h) => h.toLowerCase() === terms[i].toLowerCase());
+        if (exact) return { heading: exact, basis: "LC authority heading (exact match) — verify" };
+    }
+    for (let i = 0; i < terms.length; i++) {
+        const top = (results[i]?.headings || [])[0];
+        if (top) return { heading: top, basis: "LC authority candidate — verify" };
+    }
+    return null;
+}
 
+async function loadAuthority(cls, book) {
+    const terms = (cls.lcsh_terms || []).slice(0, 3);
     if (!terms.length) {
-        $("lcsh").textContent = "No subject candidates — review manually";
+        $("lcsh").textContent = "No subject candidate — review manually";
         return;
     }
 
     const results = await Promise.all(terms.map((t) =>
         getLCSH(t.replace(/[—–]/g, " ").trim()).catch((e) => ({ headings: [], error: e.message }))
     ));
+    const picked = pickHeading(terms, results)
+        || { heading: terms[0], basis: results.every((r) => r.error)
+            ? "Record subject term — authority service unavailable, verify" : "Record subject term — no authority match, verify" };
 
-    const authority = [...new Set(results.flatMap((r) => r.headings || []))].slice(0, 6);
-    const failed = results.every((r) => r.error);
-    if (current) current.authority = authority;
-
-    lines.push(`Record / inferred terms: ${recordTerms.slice(0, 5).join("; ")}`);
-    if (authority.length) {
-        lines.push(`LC authority candidates (unverified): ${authority.join("; ")}`);
-    } else if (failed) {
-        lines.push("Authority service unavailable — verify headings manually");
-    } else {
-        lines.push("No authority headings returned — verify manually");
-    }
-    $("lcsh").textContent = lines.join("\n");
+    if (!current || current.book !== book) return; // user selected another record meanwhile
+    current.heading = picked.heading;
+    current.headingBasis = picked.basis;
+    $("lcsh").innerHTML = `${esc(picked.heading)}<small class="sub">${esc(picked.basis)}</small>`;
+    $("catalogCards").innerHTML = buildCards(book, cls, picked.heading);
 }
 
 
@@ -568,8 +536,8 @@ $("approveBtn").addEventListener("click", () => {
         ddc: text("ddc"),
         ddc_provenance: cls.classification.provenance,
         ddc_source: cls.classification.source,
-        lcsh_displayed: text("lcsh"),
-        lcsh_authority_candidates_unverified: current.authority,
+        lcsh_heading: current.heading,
+        lcsh_heading_basis: current.headingBasis,
         shelf: text("shelf"),
         call_number_displayed: text("callNumber"),
         source_call_number: cls.call_number,
