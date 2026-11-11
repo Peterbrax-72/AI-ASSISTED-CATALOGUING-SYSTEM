@@ -85,7 +85,7 @@ CAPTIONS = {
     "320": "Political science", "330": "Economics", "332": "Financial economics",
     "340": "Law", "350": "Public administration & military science",
     "360": "Social problems & services", "370": "Education",
-    "370.15": "Educational psychology", "380": "Commerce, communications & transportation",
+    "370.15": "Educational psychology", "374": "Adult education", "380": "Commerce, communications & transportation",
     "390": "Customs, etiquette & folklore",
     # 400
     "400": "Language", "410": "Linguistics", "420": "English & Old English",
@@ -250,6 +250,7 @@ def R(number, subject, lcsh, any_=None, all_=None, exclude=None, note=None):
 
 
 LIB = r"\blibrar(?:y|ies|ian|ians|ianship)\b"
+HIST = r"\b(?:history|historical|politics|political|colonial\w*|independence|empire|war)\b"
 
 RULES = [
     # ---- 000 -------------------------------------------------------------
@@ -351,6 +352,9 @@ RULES = [
       any_=[r"\beducation\b", r"\bteaching\b", r"\bteachers?\b", r"\bpedagog\w*\b", r"\bcurriculum\b"]),
     R("370.15", "Educational psychology", ["Educational psychology"],
       any_=[r"\beducational psychology\b", r"\bpsychology of (?:education|learning)\b"]),
+    R("374", "Adult education", ["Adult education"],
+      any_=[r"\badult education\b", r"\badult learning\b", r"\bcontinuing education\b",
+            r"\blifelong learning\b", r"\badult literacy\b"]),
     R("390", "Customs & folklore", ["Folklore", "Manners and customs"],
       any_=[r"\bfolklore\b", r"\bcustoms\b", r"\betiquette\b"]),
     R("658", "Business management", ["Management", "Business"],
@@ -417,13 +421,36 @@ RULES = [
       any_=[r"\bbiograph(?:y|ies)\b", r"\bautobiograph\w+\b", r"\bmemoirs?\b"]),
     R("930", "Ancient history", ["History, Ancient"],
       any_=[r"\bancient (?:history|rome|greece|egypt)\b"]),
-    R("940", "History of Europe", ["Europe—History"], any_=[r"\beurope(?:an)?\b"]),
-    R("960", "History of Africa", ["Africa—History"], any_=[r"\bafrica(?:n)?\b"]),
-    R("967.6", "East Africa", ["Africa, East"], any_=[r"\beast africa\w*\b"]),
-    R("967.62", "Kenya", ["Kenya—History"], any_=[r"\bkenya\w*\b"]),
+    # Place names alone do NOT make a history number ("Adult education in Kenya" is education);
+    # they must be paired with a historical/political word.
+    R("940", "History of Europe", ["Europe—History"], all_=[r"\beurope(?:an)?\b", HIST]),
+    R("960", "History of Africa", ["Africa—History"], all_=[r"\bafrica(?:n)?\b", HIST]),
+    R("967.6", "East Africa", ["Africa, East—History"], all_=[r"\beast africa\w*\b", HIST]),
+    R("967.61", "Uganda", ["Uganda—History"], all_=[r"\bugand\w+\b", HIST]),
+    R("967.62", "Kenya", ["Kenya—History"], all_=[r"\bkenya\w*\b", HIST]),
     R("973", "United States history", ["United States—History"],
-      any_=[r"\bunited states\b", r"\bamerican history\b"]),
+      any_=[r"\bamerican history\b"], all_=None),
+    R("973", "United States history", ["United States—History"], all_=[r"\bunited states\b", HIST]),
 ]
+
+# Area notations (DDC Table 2) used to build geographic numbers such as 374.96761
+# (adult education, Uganda).  Applied only to plain 3-digit numbers in classes 100-799.
+AREAS = [
+    ("east africa", "East Africa", "676"), ("south africa", "South Africa", "68"),
+    ("united states", "United States", "73"), ("uganda", "Uganda", "6761"),
+    ("kenya", "Kenya", "6762"), ("tanzania", "Tanzania", "678"), ("nigeria", "Nigeria", "669"),
+    ("ghana", "Ghana", "667"), ("india", "India", "54"), ("china", "China", "51"),
+    ("africa", "Africa", "6"),
+]
+
+
+def detect_area(text):
+    low = str(text or "").lower()
+    for key, name, notation in AREAS:
+        if re.search(r"\b" + key + r"\w*\b", low):
+            return {"name": name, "notation": notation}
+    return None
+
 
 STRONG_WEIGHT = 10
 WEAK_WEIGHT = 2
@@ -594,7 +621,15 @@ def classify(book):
     elif top:
         rule = top["rule"]
         number = rule["number"]
-        caption, _ = caption_for(number)
+        subject_text = rule["subject"]
+        lcsh_list = list(rule["lcsh"])
+        area = detect_area(strong_text)
+        if area and re.fullmatch(r"[1-7]\d\d", number):
+            number = number[:3] + ".9" + area["notation"]
+            subject_text = f"{rule['subject']} — {area['name']}"
+            lcsh_list = [f"{rule['lcsh'][0]} -- {area['name']}"] + lcsh_list
+            notes.append(f"Geographic treatment: {area['name']} (area notation −{area['notation']}) was added "
+                         f"to {rule['number']}. Verify against DDC standard subdivision −09 and Table 2.")
         margin = top["score"] - (ranked[1]["score"] if len(ranked) > 1 else 0)
         strong_hit = top["score"] >= STRONG_WEIGHT
         confidence = "medium" if (top["score"] >= 2 * STRONG_WEIGHT and margin >= STRONG_WEIGHT) else "low"
@@ -605,9 +640,9 @@ def classify(book):
             "source": "Local classification engine", "confidence": confidence,
             "review_required": True, "evidence": top["evidence"],
         }
-        subject = rule["subject"]
+        subject = subject_text
         alternatives = [alt(c) for c in ranked[1:4]]
-        lcsh_terms = list(rule["lcsh"])
+        lcsh_terms = lcsh_list
         note = rule.get("note")
         if note:
             notes.append(note)

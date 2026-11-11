@@ -80,6 +80,33 @@ class ClassifierInference(unittest.TestCase):
         self.assertTrue(c["review_required"])
 
 
+class RealTitles(unittest.TestCase):
+    def test_adult_education_in_uganda(self):
+        r = inferred("Adult education in Uganda")
+        self.assertEqual(r["classification"]["number"], "374.96761")  # matches a Makerere catalogue record
+        self.assertEqual(r["lcsh_terms"][0], "Adult education -- Uganda")
+        self.assertIn("Uganda", r["primary_subject"])
+        self.assertTrue(r["shelf"].startswith("300–399"))
+
+    def test_place_alone_is_not_history(self):
+        self.assertEqual(inferred("Adult education in Kenya")["classification"]["number"], "374.96762")
+        self.assertEqual(inferred("A Political History of Uganda")["classification"]["number"], "967.61")
+
+    def test_mountain_is_you_with_open_library_data(self):
+        r = C.classify({"title": "The Mountain Is You", "author_name": ["Brianna Wiest"],
+                        "subject": ["Self-help techniques", "Self-defeating behavior", "Self-realization"],
+                        "source_ddcs": [{"number": "158.1", "source": "Open Library"}],
+                        "lcc": [{"number": "BF637.S37W5 2024", "source": "Open Library"}]})
+        self.assertEqual(r["classification"]["number"], "158.1")
+        self.assertIsNone(r["conflict"])
+        self.assertEqual(r["suggested_call_number"]["value"], "158.1 WIE")
+        self.assertEqual(r["call_number"]["type"], "not_available")  # LC class is not a call number
+
+    def test_unknown_title_is_left_for_review(self):
+        r = inferred("Enjoy your today but consider your tomorrow")
+        self.assertIsNone(r["classification"]["number"])
+
+
 class SourceDdc(unittest.TestCase):
     def test_strict_normalization(self):
         n = C.normalize_ddc
