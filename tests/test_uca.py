@@ -116,6 +116,29 @@ class RealTitles(unittest.TestCase):
         self.assertEqual(inferred("Python snakes", ["Snakes"])["classification"]["number"], "597.9")
         self.assertNotEqual(inferred("Fly fishing basics")["classification"]["number"], "597")
 
+    def test_scholarly_noise_does_not_override_the_book(self):
+        r = C.classify({"title": "Guide to Living Amphibians", "subject": ["Amphibians", "Natural history"],
+                        "scholarly_subjects": ["History and criticism", "History", "History in art", "History and criticism -- Theory, etc."]})
+        self.assertEqual(r["classification"]["number"], "597.8")
+
+    def test_natural_history_is_not_history(self):
+        self.assertNotEqual(inferred("Natural history of birds", ["Natural history"])["classification"]["number"], "900")
+
+    def test_article_not_merged_into_book(self):
+        book = S.make_doc("Open Library", title="Guide to Living Amphibians", author_name=["J. E. Webb"], first_publish_year=1978)
+        art = S.make_doc("Crossref", title="Guide to Living Amphibians", author_name=["J.E. Webb"], first_publish_year=1978,
+                         type="journal-article", metadata_type="scholarly_bibliographic_record", scholarly_subjects=["History"])
+        merged = S.merge_docs([[book], [art]])
+        self.assertEqual(len(merged), 2)
+
+    def test_author_names_deduped(self):
+        self.assertEqual(S.unique_names(["J. E. Webb", "J.E. Webb", "j e webb"]), ["J. E. Webb"])
+
+    def test_no_cache_headers_and_build(self):
+        r = S.app.test_client().get("/static/app.js")
+        self.assertEqual(r.headers["Cache-Control"], "no-store")
+        self.assertEqual(S.app.test_client().get("/health").get_json()["version"], "6.1")
+
     def test_unknown_title_is_left_for_review(self):
         r = inferred("Enjoy your today but consider your tomorrow")
         self.assertIsNone(r["classification"]["number"])

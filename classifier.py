@@ -93,7 +93,7 @@ CAPTIONS = {
     "460": "Spanish & Portuguese", "470": "Latin", "480": "Classical & modern Greek",
     "490": "Other languages", "496": "African languages", "496.392": "Swahili",
     # 500
-    "500": "Science", "510": "Mathematics", "519.5": "Statistics (mathematical)",
+    "500": "Science", "508": "Natural history", "510": "Mathematics", "519.5": "Statistics (mathematical)",
     "520": "Astronomy", "530": "Physics", "540": "Chemistry",
     "540.76": "Chemistry — problems, exercises", "550": "Earth sciences & geology",
     "560": "Fossils & prehistoric life", "570": "Biology", "580": "Plants (botany)",
@@ -372,6 +372,7 @@ RULES = [
     # ---- 500 -------------------------------------------------------------
     R("500", "Science", ["Science"], any_=[r"\bscience\b", r"\bscientific\b"],
       exclude=[r"\b(?:computer|political|library|information|social|data) science\b", r"\bscience fiction\b"]),
+    R("508", "Natural history", ["Natural history"], any_=[r"\bnatural history\b"]),
     R("510", "Mathematics", ["Mathematics"],
       any_=[r"\bmathematics\b", r"\balgebra\b", r"\bcalculus\b", r"\bgeometry\b", r"\barithmetic\b"]),
     R("519.5", "Statistics", ["Mathematical statistics"], any_=[r"\bstatistics\b"]),
@@ -427,7 +428,9 @@ RULES = [
            "confirm the author's language before assigning a specific number."),
     # ---- 900 -------------------------------------------------------------
     R("900", "History", ["History"],
-      any_=[r"\bhistory\b", r"\bhistorical\b", r"\bcivilization\b", r"\bcolonial\w*\b"]),
+      any_=[r"\bhistory\b", r"\bhistorical\b", r"\bcivilization\b", r"\bcolonial\w*\b"],
+      exclude=[r"\bnatural history\b", r"\bhistory (?:and|of) (?:science|medicine|criticism|art)\b",
+               r"\bhistory in (?:art|advertising)\b"]),
     R("910", "Geography & travel", ["Geography", "Voyages and travels"],
       any_=[r"\bgeography\b", r"\btravel\b", r"\batlas\b"]),
     R("920", "Biography", ["Biography"],
@@ -585,8 +588,10 @@ def classify(book):
     book = book or {}
     terms = _subject_terms(book)
     strong_text = " ".join([str(book.get("title") or "")] + terms)
+    # Scholarly (OpenAlex/Crossref) topic terms are noisy, so they only count as weak evidence.
     weak_text = " ".join(
         [str(book.get("description") or "")] + [str(x) for x in (book.get("first_sentence") or [])]
+        + [str(x) for x in (book.get("scholarly_subjects") or [])]
     )
     ranked = infer(strong_text, weak_text)
     top = ranked[0] if ranked else None

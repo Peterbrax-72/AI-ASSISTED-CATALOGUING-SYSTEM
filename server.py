@@ -138,6 +138,18 @@ def unique(values):
     return result
 
 
+def unique_names(values):
+    """Dedupe author names ignoring case, spacing and initials punctuation ("J. E. Webb" = "J.E. Webb")."""
+    seen, result = set(), []
+    for value in values:
+        value = str(value).strip()
+        key = re.sub(r"[^a-z]", "", value.lower())
+        if key and key not in seen:
+            seen.add(key)
+            result.append(value)
+    return result
+
+
 def first_value(value):
     if isinstance(value, list):
         return value[0] if value else None
@@ -190,7 +202,7 @@ def make_doc(source, **fields):
     lcc = fields.pop("lc_classifications", [])
     doc = {
         "key": None, "title": "Untitled", "author_name": [], "first_publish_year": None,
-        "subject": [], "isbn": [], "publisher": [], "language": [],
+        "subject": [], "scholarly_subjects": [], "isbn": [], "publisher": [], "language": [],
         "description": None, "first_sentence": [], "number_of_pages": None,
         "cover_i": None, "doi": None, "url": None,
     }
@@ -247,10 +259,19 @@ def _title_key(book):
     return (t, a) if t and a else None
 
 
+def _articleish(book):
+    t = str(book.get("type") or "").lower()
+    return (book.get("metadata_type") == "scholarly_bibliographic_record"
+            and (not t or t in SCHOLARLY_ARTICLE_TYPES or "chapter" in t))
+
+
 def _compatible(a, b):
     """Same work? Identifiers decide; otherwise main title + author + non-conflicting year."""
     if _identifiers(a) & _identifiers(b):
         return True
+    # A journal article / book chapter is not the book, even with a similar title and author.
+    if _articleish(a) != _articleish(b):
+        return False
     ka, kb = _title_key(a), _title_key(b)
     if not ka or ka != kb:
         return False
@@ -259,7 +280,8 @@ def _compatible(a, b):
 
 
 def _merge_into(base, other):
-    for field in ("author_name", "subject", "isbn", "publisher", "language", "first_sentence"):
+    base["author_name"] = unique_names(as_list(base.get("author_name")) + as_list(other.get("author_name")))
+    for field in ("subject", "scholarly_subjects", "isbn", "publisher", "language", "first_sentence"):
         base[field] = unique(as_list(base.get(field)) + as_list(other.get(field)))
     for field in ("first_publish_year", "number_of_pages", "cover_i", "doi", "url", "type",
                   "container_title", "volume", "issue", "page", "metadata_type"):
@@ -457,7 +479,7 @@ def openalex_search(q):
             title=item.get("display_name") or "Untitled",
             author_name=unique([a for a in authors if a]),
             first_publish_year=item.get("publication_year"),
-            subject=unique([s for s in subjects if s]),
+            scholarly_subjects=unique([s for s in subjects if s]),
             doi=doi, type=item.get("type"),
             metadata_type="scholarly_bibliographic_record",
         ))
@@ -498,7 +520,7 @@ def crossref_search(q):
             "Crossref",
             key=doi or ("crossref:" + normalize_query(title)),
             title=title, author_name=unique(authors), first_publish_year=year,
-            subject=unique(as_list(item.get("subject"))),
+            scholarly_subjects=unique(as_list(item.get("subject"))),
             isbn=unique(as_list(item.get("ISBN"))),
             publisher=as_list(item.get("publisher")),
             language=as_list(item.get("language")),
@@ -791,12 +813,18 @@ def lcsh():
 @app.get("/health")
 def health():
     return jsonify({
-        "status": "ok", "version": "6.1", "backend": "Flask",
+        "status": "ok", "version": "6.1", "build": "2026-11-14b", "backend": "Flask",
         "search": "/api/search", "classify": "/api/classify", "lcsh": "/api/lcsh",
         "catalog_sources": [n for n, _ in SERVICES] + ["Local classification fallback"],
         "authority_source": "Library of Congress Linked Data Service",
         "cache_ttl_seconds": CACHE_TTL,
     })
+
+
+@app.after_request
+def no_cache(response):
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/static/<path:name>")
