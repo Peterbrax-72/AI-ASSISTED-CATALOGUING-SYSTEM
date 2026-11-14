@@ -15,7 +15,7 @@ BASE = Path(__file__).resolve().parent
 
 # Only these files may be fetched under /static/. The project folder also holds
 # server.py and classifier.py, which must never be served to browsers.
-STATIC_FILES = {"app.js", "style.css"}
+STATIC_FILES = {"app.js", "style.css", "theme.css"}
 
 app = Flask(__name__, static_folder=None)
 

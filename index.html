@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f3a5f'/%3E%3Cpath d='M8 7h13a3 3 0 0 1 3 3v15H11a3 3 0 0 1-3-3z' fill='%23fff'/%3E%3C/svg%3E">
     <title>Universal Cataloging Assistant</title>
-    <link rel="stylesheet" href="/static/style.css?v=6.1b">
+    <script>
+        /* Mark first-time visitors before first paint so the interface does not flash behind the intro. */
+        try { if (!localStorage.getItem("uca_intro_seen")) document.documentElement.classList.add("intro-pending"); }
+        catch (e) { document.documentElement.classList.add("intro-pending"); }
+    </script>
+    <link rel="stylesheet" href="/static/style.css?v=6.1d">
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 
     <style>
@@ -126,9 +131,56 @@
             .api-status-head, .catalog-section-head { flex-direction:column; }
         }
     </style>
+    <link rel="stylesheet" href="/static/theme.css?v=6.1d">
 </head>
 
 <body>
+<div id="intro" aria-hidden="true">
+    <div class="intro-stage">
+        <div class="book-wrap">
+            <div class="tilt">
+                <div class="book">
+                    <div class="base base-left"></div>
+                    <div class="base base-right"></div>
+                    <div class="pg" style="--n:6"></div>
+                    <div class="pg" style="--n:5"></div>
+                    <div class="pg" style="--n:4"></div>
+                    <div class="pg" style="--n:3"></div>
+                    <div class="pg" style="--n:2"></div>
+                    <div class="pg" style="--n:1"></div>
+                    <div class="cover"><span>UCA</span><i></i></div>
+                </div>
+            </div>
+        </div>
+        <h2 class="intro-title">Universal Cataloging Assistant</h2>
+        <p class="intro-sub">Search &nbsp;•&nbsp; Classify &nbsp;•&nbsp; Describe &nbsp;•&nbsp; Verify</p>
+    </div>
+    <span class="intro-skip">Click anywhere to skip</span>
+</div>
+
+<div id="approveDialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adTitle">
+    <div class="modal-card">
+        <h3 id="adTitle">Approve this record?</h3>
+        <p id="adText"></p>
+        <div class="modal-actions">
+            <button id="adDownload" class="primary">Approve &amp; download JSON</button>
+            <button id="adOnly" class="secondary">Approve without downloading</button>
+            <button id="adCancel" class="link-btn" type="button">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="tick" class="tick" aria-hidden="true">
+    <div class="tick-card">
+        <svg viewBox="0 0 52 52" width="92" height="92">
+            <circle class="tick-ring" cx="26" cy="26" r="24"/>
+            <circle class="tick-fill" cx="26" cy="26" r="24"/>
+            <path class="tick-check" d="M14.5 27.5l8 8 15-17"/>
+        </svg>
+        <span>Approved</span>
+    </div>
+</div>
+
 <header class="topbar">
     <div>
         <span class="eyebrow">LIBRARY & INFORMATION SCIENCE</span>
@@ -201,11 +253,11 @@
                 <span>Primary subject</span>
                 <strong id="subject">—</strong>
             </article>
-            <article class="result-item">
+            <article class="result-item key">
                 <span>DDC number</span>
                 <strong id="ddc">—</strong>
             </article>
-            <article class="result-item">
+            <article class="result-item key">
                 <span>LCSH heading</span>
                 <strong id="lcsh">—</strong>
             </article>
@@ -213,7 +265,7 @@
                 <span>Shelf location</span>
                 <strong id="shelf">—</strong>
             </article>
-            <article class="result-item wide">
+            <article class="result-item wide key">
                 <span>Call number</span>
                 <strong id="callNumber">—</strong>
             </article>
@@ -232,7 +284,7 @@
         <div class="review">
             <div>
                 <h3>Librarian review</h3>
-                <p>Verify and edit the draft description before adding it to a real catalog. Approve downloads the record as a JSON file.</p>
+                <p>Verify and edit the draft description before adding it to a real catalog. When you approve, you choose whether to download the record.</p>
             </div>
             <div class="review-actions">
                 <button id="editBtn" class="secondary">Edit</button>
@@ -247,8 +299,9 @@
     <a href="https://peterbarakaphilip.netlify.app" target="_blank">
         Developed by Pinchezmedia254
     </a>
+    <button id="replayIntro" class="link-btn" type="button">▶ Replay intro</button>
 </footer>
 
-<script src="/static/app.js?v=6.1b"></script>
+<script src="/static/app.js?v=6.1d"></script>
 </body>
 </html>

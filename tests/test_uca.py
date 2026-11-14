@@ -317,6 +317,7 @@ class ApiBehaviour(unittest.TestCase):
             self.assertEqual(self.client.get(path).status_code, 404, path)
         self.assertEqual(self.client.get("/static/app.js").status_code, 200)
         self.assertEqual(self.client.get("/static/style.css").status_code, 200)
+        self.assertEqual(self.client.get("/static/theme.css").status_code, 200)
 
     def test_lcsh_parsing(self):
         raw = ["libraries", ["Libraries", "Libraries--Kenya"], ["", ""], ["http://id.loc.gov/a", "http://id.loc.gov/b"]]

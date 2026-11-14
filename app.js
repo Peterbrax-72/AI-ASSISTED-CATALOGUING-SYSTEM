@@ -61,6 +61,23 @@ function firstIsbn(book) {
     return list.find((i) => String(i).replace(/[^0-9X]/gi, "").length === 13) || list[0] || null;
 }
 
+/* Restart a CSS animation on an element that is already visible. */
+function replay(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth; // force reflow so the animation starts again
+    el.classList.add(cls);
+}
+
+function flash(ids) {
+    ids.forEach((id, i) => {
+        const el = $(id);
+        el.classList.remove("flash");
+        void el.offsetWidth;
+        el.style.animationDelay = `${i * 90}ms`;
+        el.classList.add("flash");
+    });
+}
+
 const MISSING = (what) => `[${what} not supplied — review]`;
 
 
@@ -87,12 +104,12 @@ function renderStatus(data) {
     }
 
     const failed = used.filter((s) => s.status === "failed");
-    const chips = used.map((s) => {
+    const chips = used.map((s, idx) => {
         const cls = s.status === "failed" ? "error" : s.status;
         const why = s.status === "failed"
             ? `${ERROR_LABEL[s.error_kind] || "Failed"}${s.error ? ": " + s.error : ""}`
             : (s.status === "ok" ? `${s.count} record(s)` : "No matching records");
-        return `<span class="src-chip ${esc(cls)}" title="${esc(why)}"><i></i>${esc(s.name)}${s.status === "failed" ? " — " + esc(ERROR_LABEL[s.error_kind] || "failed") : ""}</span>`;
+        return `<span class="src-chip ${esc(cls)}" style="--i:${idx}" title="${esc(why)}"><i></i>${esc(s.name)}${s.status === "failed" ? " — " + esc(ERROR_LABEL[s.error_kind] || "failed") : ""}</span>`;
     }).join("");
 
     const notice = data.message && (failed.length || data.fallback)
@@ -108,8 +125,9 @@ function renderStatus(data) {
 
 const PAGE_SIZE = 8;
 
-function resultRow(book) {
+function resultRow(book, index = 0) {
     const item = document.createElement("div");
+    item.style.setProperty("--i", index);
     item.className = "match" + (book.synthetic ? " synthetic" : "");
 
     const authors = Array.isArray(book.author_name) && book.author_name.length
@@ -154,7 +172,7 @@ function renderMatches(data) {
     const more = document.createElement("button");
     more.className = "secondary more-btn";
     const showNext = () => {
-        books.slice(shown, shown + PAGE_SIZE).forEach((b) => list.insertBefore(resultRow(b), more));
+        books.slice(shown, shown + PAGE_SIZE).forEach((b, i) => list.insertBefore(resultRow(b, i), more));
         shown = Math.min(books.length, shown + PAGE_SIZE);
         more.textContent = `Show ${books.length - shown} more`;
         more.classList.toggle("hidden", shown >= books.length);
@@ -251,7 +269,11 @@ function basisText(cls) {
 async function showCatalog(book) {
     setEditing(false);
     $("approveStatus").textContent = "";
+    $("approveStatus").classList.remove("ok");
     $("result").classList.remove("hidden");
+    $("result").classList.add("is-loading");
+    replay($("result"), "animate");
+    $("catalogCards").classList.remove("no-anim");
     $("resultTitle").textContent = book.title || "Untitled";
     $("resultAuthor").textContent = (book.author_name || []).join(", ") || "Author not supplied";
     ["materialType", "subject", "ddc", "shelf", "callNumber", "basis", "lcsh", "source"].forEach((id) => { $(id).textContent = "…"; });
@@ -271,10 +293,12 @@ async function showCatalog(book) {
         $("basis").textContent = error.message;
         $("confidence").textContent = "Classification failed • Manual cataloguing required";
         $("lcsh").textContent = "—";
+        $("result").classList.remove("is-loading");
         current = null;
         return;
     }
 
+    $("result").classList.remove("is-loading");
     current = { book, cls, heading: null, headingBasis: null, edited: false };
 
     // Exactly one value for each of: DDC, LCSH heading, call number.
@@ -285,11 +309,13 @@ async function showCatalog(book) {
     $("shelf").textContent = cls.shelf;
     $("callNumber").innerHTML = call.value ? `${esc(call.value)}<small class="sub">${esc(call.label)}</small>` : "—";
     $("confidence").textContent = provenanceText(cls, book);
+    $("confidence").dataset.kind = cls.classification.provenance;
     $("basis").textContent = basisText(cls);
     $("source").textContent = book.sources?.length ? book.sources.join(" + ") : (book.source || "Bibliographic record");
 
     const first = (cls.lcsh_terms || [])[0] || null;
     $("catalogCards").innerHTML = buildCards(book, cls, first);
+    flash(["subject", "ddc", "shelf", "callNumber"]);
     await loadAuthority(cls, book);
 }
 
@@ -325,7 +351,9 @@ async function loadAuthority(cls, book) {
     current.heading = picked.heading;
     current.headingBasis = picked.basis;
     $("lcsh").innerHTML = `${esc(picked.heading)}<small class="sub">${esc(picked.basis)}</small>`;
+    $("catalogCards").classList.add("no-anim"); // do not replay the card entrance for the heading update
     $("catalogCards").innerHTML = buildCards(book, cls, picked.heading);
+    flash(["lcsh"]);
 }
 
 
@@ -513,19 +541,10 @@ function downloadJson(name, obj) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-$("approveBtn").addEventListener("click", () => {
-    if (!current) {
-        $("approveStatus").textContent = "Analyze a record before approving.";
-        return;
-    }
-    if (editing) {
-        current.edited = true;
-        setEditing(false);
-    }
-
+function buildApprovedRecord() {
     const { book, cls } = current;
     const text = (id) => $(id).textContent.trim();
-    const record = {
+    return {
         approved_at: new Date().toISOString(),
         status: "approved_by_librarian",
         edited_by_librarian: current.edited,
@@ -548,6 +567,48 @@ $("approveBtn").addEventListener("click", () => {
         original_classification: cls.classification,
         conflict_flag: cls.conflict || null
     };
+}
+
+function recordFileName(record) {
+    const safe = (record.title || "record").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+    return `catalog-${safe || "record"}-${Date.now()}.json`;
+}
+
+
+/* =========================
+   APPROVE: ask first, then confirm with a green tick
+========================= */
+
+let pendingRecord = null;
+let tickTimer = null;
+
+function openApproveDialog(record) {
+    pendingRecord = record;
+    $("adText").textContent =
+        `“${record.title}” • DDC ${record.ddc || "none"}. Approving marks this record as checked by a librarian. ` +
+        "Choose whether to also save it as a JSON file.";
+    $("approveDialog").classList.remove("hidden");
+    $("adDownload").focus();
+}
+
+function closeApproveDialog() {
+    $("approveDialog").classList.add("hidden");
+    pendingRecord = null;
+}
+
+function showTick() {
+    const tick = $("tick");
+    clearTimeout(tickTimer);
+    tick.classList.remove("show");
+    void tick.offsetWidth;
+    tick.classList.add("show");
+    tickTimer = setTimeout(() => tick.classList.remove("show"), 2300);
+}
+
+function finishApproval(download) {
+    const record = pendingRecord;
+    closeApproveDialog();
+    if (!record) return;
 
     try {
         const key = "uca_approved_records";
@@ -555,10 +616,103 @@ $("approveBtn").addEventListener("click", () => {
         saved.push(record);
         localStorage.setItem(key, JSON.stringify(saved));
     } catch (_) {
-        /* storage may be unavailable; the downloaded file is the record of truth */
+        /* storage may be unavailable; the JSON file is then the only copy */
     }
 
-    const safe = (record.title || "record").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
-    downloadJson(`catalog-${safe || "record"}-${Date.now()}.json`, record);
-    $("approveStatus").textContent = "Approved. The record was downloaded as a JSON file.";
+    const status = $("approveStatus");
+    const filename = recordFileName(record);
+    status.textContent = "";
+
+    if (download) {
+        downloadJson(filename, record);
+        status.append("Approved. The record was downloaded as a JSON file.");
+    } else {
+        status.append("Approved. No file was downloaded. ");
+        const again = document.createElement("button");
+        again.type = "button";
+        again.className = "link-btn";
+        again.textContent = "Download JSON now";
+        again.addEventListener("click", () => downloadJson(filename, record));
+        status.appendChild(again);
+    }
+    replay(status, "ok");
+    showTick();
+}
+
+$("approveBtn").addEventListener("click", () => {
+    if (!current) {
+        $("approveStatus").textContent = "Analyze a record before approving.";
+        return;
+    }
+    if (editing) {
+        current.edited = true;
+        setEditing(false);
+    }
+    openApproveDialog(buildApprovedRecord());
 });
+
+$("adDownload").addEventListener("click", () => finishApproval(true));
+$("adOnly").addEventListener("click", () => finishApproval(false));
+$("adCancel").addEventListener("click", closeApproveDialog);
+$("approveDialog").addEventListener("click", (event) => {
+    if (event.target === $("approveDialog")) closeApproveDialog();
+});
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("approveDialog").classList.contains("hidden")) closeApproveDialog();
+});
+
+
+/* =========================
+   FIRST-RUN INTRO: a book whose pages turn, then the interface opens
+========================= */
+
+const INTRO_MS = 4600;
+let introTimer = null;
+
+function markIntroSeen() {
+    try { localStorage.setItem("uca_intro_seen", "1"); } catch (_) { /* optional */ }
+}
+
+function endIntro() {
+    const el = $("intro");
+    const root = document.documentElement;
+    clearTimeout(introTimer);
+    if (!root.classList.contains("intro-playing")) return;
+    el.classList.add("leaving");
+    markIntroSeen();
+    setTimeout(() => {
+        root.classList.remove("intro-pending", "intro-playing");
+        el.classList.remove("run", "leaving");
+    }, 700);
+}
+
+function startIntro(force = false) {
+    const root = document.documentElement;
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let seen = false;
+    try { seen = !!localStorage.getItem("uca_intro_seen"); } catch (_) { /* treat as unseen */ }
+
+    if (!force && (seen || reduce)) {
+        root.classList.remove("intro-pending");
+        if (reduce) markIntroSeen();
+        return;
+    }
+
+    const el = $("intro");
+    root.classList.add("intro-playing");
+    el.classList.remove("run", "leaving");
+    void el.offsetWidth;
+    el.classList.add("run");
+    clearTimeout(introTimer);
+    introTimer = setTimeout(endIntro, INTRO_MS);
+}
+
+$("intro").addEventListener("click", endIntro);
+document.addEventListener("keydown", (event) => {
+    if ((event.key === "Escape" || event.key === "Enter") && document.documentElement.classList.contains("intro-playing")) {
+        endIntro();
+    }
+});
+$("replayIntro").addEventListener("click", () => startIntro(true));
+
+startIntro();
