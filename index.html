@@ -1,123 +1,254 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <link rel="icon" type="image/x-icon" href="/static/FAVICON.ICO">
-        <title>Universal Cataloging Assistant</title>
-        <link rel="stylesheet" href="/static/style.css">
-        <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js">
-        </script>
-    </head>
-    <body>
-        <header class="topbar">
-            <div>
-                <span class="eyebrow">LIBRARY & INFORMATION SCIENCE</span>
-                <h1>Universal Cataloging Assistant</h1>
-                <p>Search a book, read a cover, and receive DDC, LCSH, subject and call-number suggestions.</p>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f3a5f'/%3E%3Cpath d='M8 7h13a3 3 0 0 1 3 3v15H11a3 3 0 0 1-3-3z' fill='%23fff'/%3E%3C/svg%3E">
+    <title>Universal Cataloging Assistant</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+
+    <style>
+        /* V6 interface styling additions. */
+        .api-status-panel, .catalog-panel { margin-top: 22px; }
+        .api-status-head, .catalog-section-head {
+            display:flex; justify-content:space-between; gap:16px;
+            align-items:flex-start; margin-bottom:14px;
+        }
+        .api-status-head h3, .catalog-section-head h3 { margin:4px 0 0; }
+        .api-total, .catalog-standard { font-size:.85rem; opacity:.75; }
+        .api-status-grid {
+            display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px;
+        }
+        .api-status-card {
+            border:1px solid rgba(0,0,0,.12); border-radius:10px;
+            padding:12px; background:rgba(255,255,255,.55);
+        }
+        .api-status-card strong, .api-status-card span, .api-status-card small { display:block; }
+        .api-status-card span { margin-top:5px; font-size:.86rem; }
+        .api-status-card small { margin-top:7px; line-height:1.35; opacity:.8; }
+        .api-status-card.ok { border-left:4px solid #2d8a4b; }
+        .api-status-card.no_results { border-left:4px solid #a27b00; }
+        .api-status-card.error { border-left:4px solid #b33a3a; background:rgba(179,58,58,.06); }
+        .api-status-card.skipped { border-left:4px solid #98a2b3; opacity:.8; }
+        .fallback-notice {
+            margin-top:12px; padding:11px 13px; border-radius:9px;
+            background:rgba(162,123,0,.09); font-size:.9rem;
+        }
+        .fallback-notice.danger { background:rgba(179,58,58,.12); color:#7a1f1f; font-weight:600; }
+        .badges { margin:6px 0 0; display:flex; flex-wrap:wrap; gap:6px; }
+        .badge-mini {
+            display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px;
+            background:#edf2f7; color:#344054;
+        }
+        .badge-mini.good { background:#e3f4e8; color:#1c6b37; }
+        .badge-mini.warn { background:#fdecc8; color:#7a5200; }
+        .badge-mini.muted { background:#eef0f4; color:#667085; }
+        .result-item strong { white-space:pre-line; }
+        .is-editing { outline:2px dashed #3b82f6; outline-offset:2px; background:#f0f7ff; }
+        .approve-status { margin-top:10px; font-size:.9rem; color:#344054; min-height:1.2em; }
+        .missing { color:#b33a3a; }
+
+        /* ---- compact source chips ---- */
+        .api-status-panel { padding:0; background:none; border:0; box-shadow:none; margin:0 0 14px; }
+        .src-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+        .src-label { font-size:11px; letter-spacing:.14em; font-weight:700; color:#64748b; margin-right:2px; }
+        .src-chip {
+            display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
+            font-size:12px; background:#fff; border:1px solid #dce3ec; color:#344054;
+        }
+        .src-chip i { width:8px; height:8px; border-radius:50%; background:#2d8a4b; }
+        .src-chip.no_results i { background:#c9a227; }
+        .src-chip.error { border-color:#e8b4b4; background:#fdf2f2; color:#7a1f1f; }
+        .src-chip.error i { background:#b33a3a; }
+
+        /* ---- results list ---- */
+        .matches .section-title { margin-bottom:6px; }
+        #matchList { display:flex; flex-direction:column; gap:8px; }
+        #matchList .match {
+            margin:0; padding:14px 16px; background:#fff; border:1px solid #e3e8ef; border-radius:12px;
+            transition:border-color .15s, box-shadow .15s, transform .15s;
+        }
+        #matchList .match:hover { border-color:#b7c3d4; box-shadow:0 4px 14px rgba(16,24,40,.07); }
+        #matchList .match.selected { border-color:#111827; box-shadow:0 0 0 1px #111827; }
+        #matchList .match.synthetic { background:#fffaf0; border-style:dashed; }
+        .match-main { min-width:0; }
+        #matchList .match h3 {
+            margin:0 0 3px; font-size:16px; line-height:1.3; font-weight:700;
+            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+        }
+        #matchList .match p { margin:0; }
+        .match-meta { font-size:13px; color:#475467; }
+        .match-src { font-size:12px !important; color:#98a2b3 !important; margin-top:3px !important; }
+        .ddc-tag {
+            margin-left:8px; padding:1px 7px; border-radius:6px; background:#e3f4e8; color:#1c6b37;
+            font-weight:700; font-size:11px;
+        }
+        #matchList .analyze-btn { padding:9px 18px; flex-shrink:0; }
+        .more-btn { align-self:center; margin-top:4px; }
+        .empty { padding:18px; text-align:center; color:#64748b; background:#f8fafc; border-radius:12px; }
+        #matchCount { font-size:13px; color:#64748b; }
+
+        /* ---- result card ---- */
+        .why summary { cursor:pointer; font-size:13px; color:#475467; font-weight:600; }
+        .why strong { margin-top:10px; font-weight:400; font-size:13px; color:#475467; }
+        .result-item strong { font-size:15px; }
+        .result-item strong .sub { display:block; margin-top:3px; font-weight:400; font-size:12px; color:#667085; }
+        .catalog-tracing { font-size:.9rem; color:#475467; }
+        .catalog-call { font-weight:700; }
+        .catalog-call small { font-weight:400; opacity:.65; margin-left:8px; }
+
+        .catalog-card-grid {
+            display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px;
+        }
+        .catalog-card {
+            border:1px solid rgba(0,0,0,.2); background:#fff; border-radius:8px;
+            padding:18px; box-shadow:0 5px 16px rgba(0,0,0,.05);
+        }
+        .main-entry-card { grid-column:1 / -1; }
+        .card-label {
+            font:700 11px/1.2 Arial,sans-serif; letter-spacing:.12em;
+            opacity:.65; margin-bottom:14px;
+        }
+        .card-body { line-height:1.55; }
+        .card-body p { margin:7px 0; }
+        .catalog-entry { font-family:Georgia,"Times New Roman",serif; }
+        .catalog-subjects { margin-top:12px; }
+        .catalog-call {
+            margin-top:15px; padding-top:12px;
+            border-top:1px solid rgba(0,0,0,.12);
+            font-family:Arial,sans-serif;
+        }
+        .catalog-actions {
+            margin-top:14px; display:flex; justify-content:flex-end;
+        }
+        @media (max-width:650px) {
+            .api-status-head, .catalog-section-head { flex-direction:column; }
+        }
+    </style>
+</head>
+
+<body>
+<header class="topbar">
+    <div>
+        <span class="eyebrow">LIBRARY & INFORMATION SCIENCE</span>
+        <h1>Universal Cataloging Assistant</h1>
+        <p>Search a book, read a cover, and receive bibliographic, DDC, LCSH and AACR2-style cataloguing suggestions.</p>
+    </div>
+    <span class="badge">Version v6 — AI Cataloging Assistant</span>
+</header>
+
+<main class="container">
+    <section class="hero-card">
+        <div class="tabs">
+            <button class="tab active" data-mode="search">Search</button>
+            <button class="tab" data-mode="photo">Book photo</button>
+        </div>
+
+        <div id="searchMode">
+            <label for="query">Book title or author</label>
+            <div class="search-row">
+                <input id="query" type="text" placeholder="e.g. Ngugi wa Thiong'o">
+                <button id="searchBtn" class="primary">Search</button>
             </div>
-             <span class="badge">Version v6 — AI-Cataloging Assistant</span>
-        </header>
-        <main class="container">
-            <section class="hero-card">
-                <div class="tabs">
-                    <button class="tab active" data-mode="search">Search</button>
-                    <button class="tab" data-mode="photo">Book photo</button>
-                </div>
-                <div id="searchMode">
-                    <label for="query">Book title or author</label>
-                    <div class="search-row">
-                        <input id="query" type="text" placeholder="e.g. Ngugi wa Thiong'o">
-                        <button id="searchBtn" class="primary">Search</button>
-                    </div>
-                    <div id="searchStatus" class="status">
-                    </div>
-                </div>
-                <div id="photoMode" class="hidden">
-                    <label for="bookPhoto">Upload book cover / title page</label>
-                    <input id="bookPhoto" type="file" accept="image/*">
-                    <div id="preview" class="preview">Image preview will appear here.</div>
-                    <button id="photoAnalyzeBtn" class="primary">Read & Search Book</button>
-                    <div id="ocrStatus" class="status">
-                    </div>
-                </div>
-                  <p class="hint">
-                    Multi-source bibliographic search with local classification fallback.
-                    Classification is a suggestion and must be verified.
-                  </p>            </section>
-            <section id="matches" class="matches hidden">
-                <div class="section-title">
-                    <div>
-                        <span class="eyebrow">SEARCH RESULTS</span>
-                        <h2>Select a matching book</h2>
-                    </div>
-                    <span id="matchCount">
-                    </span>
-                </div>
-                <div id="matchList">
-                </div>
-            </section>
-            <section id="result" class="result-card hidden">
-                <div class="result-head">
-                    <div>
-                        <span class="eyebrow">CATALOGING SUGGESTION</span>
-                        <h2 id="resultTitle">—</h2>
-                        <p id="resultAuthor" class="author">
-                        </p>
-                    </div>
-                    <span id="confidence" class="confidence">Review required</span>
-                </div>
-                <div class="grid">
-                    <article class="result-item">
-                        <span>Material type</span>
-                        <strong id="materialType">—</strong>
-                    </article>
-                    <article class="result-item">
-                        <span>Primary subject</span>
-                        <strong id="subject">—</strong>
-                    </article>
-                    <article class="result-item">
-                        <span>Suggested DDC</span>
-                        <strong id="ddc">—</strong>
-                        <small class="field-note">Existing DDC when available; otherwise inferred.</small>
-                    </article>
-                    <article class="result-item">
-                        <span>LCSH suggestions</span>
-                        <strong id="lcsh">—</strong>
-                        <small class="field-note">Authority candidates; librarian verification required.</small>
-                    </article>
-                    <article class="result-item wide">
-                        <span>Suggested shelf location</span>
-                        <strong id="shelf">—</strong>
-                    </article>
-                    <article class="result-item wide">
-                        <span>Suggested call number</span>
-                        <strong id="callNumber">—</strong>
-                        <small class="field-note">Basic author mark; not a full Cutter number.</small>
-                    </article>
-                    <article class="result-item wide">
-                        <span>Record source</span>
-                        <strong id="source">—</strong>
-                    </article>
-                </div>
-                <div class="review">
-                    <div>
-                        <h3>Librarian review</h3>
-                        <p>Verify the suggestion before adding it to a real catalog.</p>
-                    </div>
-                    <div class="review-actions">
-                        <button id="editBtn" class="secondary">Edit</button>
-                        <button id="approveBtn" class="primary">Approve</button>
-                    </div>
-                </div>
-            </section>
-        </main>
-        <footer class="site-footer">
-            <a href="https://peterbarakaphilip.netlify.app" target="_blank">
-                Developed by Pinchezmedia254
-            </a>
-        </footer>
-        <script src="/static/app.js">
-        </script>
-    </body>
+            <div id="searchStatus" class="status"></div>
+        </div>
+
+        <div id="photoMode" class="hidden">
+            <label for="bookPhoto">Upload book cover / title page</label>
+            <input id="bookPhoto" type="file" accept="image/*">
+            <div id="preview" class="preview">Image preview will appear here.</div>
+            <button id="photoAnalyzeBtn" class="primary">Read & Search Book</button>
+            <div id="ocrStatus" class="status"></div>
+        </div>
+
+        <p class="hint">
+            Multi-source bibliographic search with local classification fallback.
+            The draft description is generated only from available metadata;
+            missing elements are marked for librarian review.
+        </p>
+    </section>
+
+    <section id="apiStatus" class="api-status-panel"></section>
+
+    <section id="matches" class="matches hidden">
+        <div class="section-title">
+            <div>
+                <span class="eyebrow">SEARCH RESULTS</span>
+                <h2>Select a matching book</h2>
+            </div>
+            <span id="matchCount"></span>
+        </div>
+        <div id="matchList"></div>
+    </section>
+
+    <section id="result" class="result-card hidden">
+        <div class="result-head">
+            <div>
+                <span class="eyebrow">CATALOGING SUGGESTION</span>
+                <h2 id="resultTitle">—</h2>
+                <p id="resultAuthor" class="author"></p>
+            </div>
+            <span id="confidence" class="confidence">Review required</span>
+        </div>
+
+        <div class="grid">
+            <article class="result-item">
+                <span>Material type</span>
+                <strong id="materialType">—</strong>
+            </article>
+            <article class="result-item">
+                <span>Primary subject</span>
+                <strong id="subject">—</strong>
+            </article>
+            <article class="result-item">
+                <span>DDC number</span>
+                <strong id="ddc">—</strong>
+            </article>
+            <article class="result-item">
+                <span>LCSH heading</span>
+                <strong id="lcsh">—</strong>
+            </article>
+            <article class="result-item wide">
+                <span>Shelf location</span>
+                <strong id="shelf">—</strong>
+            </article>
+            <article class="result-item wide">
+                <span>Call number</span>
+                <strong id="callNumber">—</strong>
+            </article>
+            <article class="result-item wide">
+                <span>Record source</span>
+                <strong id="source">—</strong>
+            </article>
+            <details class="result-item wide why">
+                <summary>Why this number? (evidence, conflicts, cautions)</summary>
+                <strong id="basis">—</strong>
+            </details>
+        </div>
+
+        <section id="catalogCards" class="catalog-panel"></section>
+
+        <div class="review">
+            <div>
+                <h3>Librarian review</h3>
+                <p>Verify and edit the draft description before adding it to a real catalog. Approve downloads the record as a JSON file.</p>
+            </div>
+            <div class="review-actions">
+                <button id="editBtn" class="secondary">Edit</button>
+                <button id="approveBtn" class="primary">Approve</button>
+            </div>
+        </div>
+        <div id="approveStatus" class="approve-status" role="status"></div>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <a href="https://peterbarakaphilip.netlify.app" target="_blank">
+        Developed by Pinchezmedia254
+    </a>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
 </html>
